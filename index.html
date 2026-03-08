@@ -207,13 +207,13 @@
   <div id="thumb-strip"></div>
   <div id="slide-container">
     <img id="slide-img" src="" alt="" />
-    <iframe id="webapp-frame" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-pointer-lock allow-orientation-lock" allowfullscreen></iframe>
-    <div id="webapp-blocker">
-      <div class="blocker-icon">🔒</div>
-      <h3>This app can't display inline</h3>
-      <p id="blocker-url-text"></p>
-      <p>The app blocked embedded display (X-Frame-Options). Open it in a new tab instead.</p>
-      <button class="open-tab-btn" id="open-tab-btn">Open in New Tab</button>
+    <div id="webapp-running" style="display:none;position:absolute;inset:0;flex-direction:column;align-items:center;justify-content:center;gap:20px;background:#080c10">
+      <div style="font-size:3.5rem">🚀</div>
+      <div id="wr-label" style="font-size:1.3rem;font-weight:700;color:#fff;letter-spacing:.5px"></div>
+      <div style="font-size:.85rem;color:rgba(255,255,255,.4);max-width:340px;text-align:center;line-height:1.6">Running in popup window — it will close automatically when the timer ends</div>
+      <div id="wr-reopen" style="margin-top:8px">
+        <button onclick="reopenPopup()" style="padding:9px 22px;background:var(--accent);color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer;font-size:.88rem">↗ Reopen if closed</button>
+      </div>
     </div>
   </div>
   <div id="key-hint">← → arrows · Space pause · F fullscreen · Esc exit</div>
@@ -291,8 +291,17 @@ function renderSequence(){
   });
 }
 function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
-let ci=0,playing=true,tid=null,tick=null,tLeft=0;
-const ks=document.getElementById('kiosk-screen'),si=document.getElementById('slide-img'),wf=document.getElementById('webapp-frame'),wb=document.getElementById('webapp-blocker'),tb=document.getElementById('timer-badge'),pb=document.getElementById('progress-bar'),sc=document.getElementById('slide-counter'),il=document.getElementById('item-label'),dn=document.getElementById('dot-nav'),ts=document.getElementById('thumb-strip');
+let ci=0,playing=true,tid=null,tick=null,tLeft=0,webappPopup=null,currentPopupUrl='';
+const ks=document.getElementById('kiosk-screen'),si=document.getElementById('slide-img'),wr=document.getElementById('webapp-running'),tb=document.getElementById('timer-badge'),pb=document.getElementById('progress-bar'),sc=document.getElementById('slide-counter'),il=document.getElementById('item-label'),dn=document.getElementById('dot-nav'),ts=document.getElementById('thumb-strip');
+function openWebAppPopup(url){
+  currentPopupUrl=url;
+  if(webappPopup&&!webappPopup.closed)webappPopup.close();
+  const w=screen.width,h=screen.height;
+  webappPopup=window.open(url,'webapp_popup',`width=${w},height=${h},left=0,top=0,toolbar=no,menubar=no,scrollbars=yes,resizable=yes`);
+  if(webappPopup)webappPopup.focus();
+}
+function reopenPopup(){if(currentPopupUrl)openWebAppPopup(currentPopupUrl);}
+function closePopup(){if(webappPopup&&!webappPopup.closed){webappPopup.close();webappPopup=null;}}
 function launchKiosk(){
   if(!sequence.length)return;ci=0;playing=true;buildNav();showKiosk();renderItem(0);
   const fs=document.getElementById('fullscreen-select').value;
@@ -314,18 +323,17 @@ function renderItem(idx){
   document.querySelectorAll('.dot').forEach((d,i)=>d.classList.toggle('active',i===idx));
   document.querySelectorAll('.thumb-item').forEach((t,i)=>t.classList.toggle('active-thumb',i===idx));
   sc.textContent=`${idx+1} / ${sequence.length}`;il.textContent=item.label;
-  si.style.display='none';wf.style.display='none';wb.style.display='none';tb.style.display='none';
+  si.style.display='none';wr.style.display='none';tb.style.display='none';closePopup();
   if(item.type==='slide'){
     si.style.display='block';si.onload=()=>{si.classList.remove('slide-enter');void si.offsetWidth;si.classList.add('slide-enter');};si.src=item.src;
   }else{
-    wf.style.display='block';wf.src='';
-    let fl=false;wf.onload=()=>{fl=true;};wf.onerror=()=>showBlocker(item.url);wf.src=item.url;
-    setTimeout(()=>{if(!fl){try{const t=wf.contentDocument;if(!t||t.URL==='about:blank')showBlocker(item.url);}catch(e){}}},4000);
+    wr.style.display='flex';
+    document.getElementById('wr-label').textContent=item.label;
     tb.style.display='block';startCD(item.duration);
+    openWebAppPopup(item.url);
   }
   startProg(item.duration);if(playing)schedAdv(item.duration);
 }
-function showBlocker(url){wf.style.display='none';wb.style.display='flex';document.getElementById('blocker-url-text').textContent=url;document.getElementById('open-tab-btn').onclick=()=>window.open(url,'_blank');}
 function startProg(dur){pb.style.transition='none';pb.style.width='0%';void pb.offsetWidth;pb.style.transition=`width ${dur}ms linear`;pb.style.width='100%';}
 function startCD(dur){tLeft=Math.round(dur/1000);updT();tick=setInterval(()=>{tLeft--;if(tLeft<0){clearInterval(tick);return;}updT();},1000);}
 function updT(){const m=Math.floor(tLeft/60),s=String(tLeft%60).padStart(2,'0');tb.textContent=`⏱ ${m}:${s}`;}
@@ -336,7 +344,7 @@ function nextItem(){if(ci<sequence.length-1){ci++;renderItem(ci);}else if(docume
 function prevItem(){if(ci>0){ci--;renderItem(ci);}}
 document.getElementById('btn-prev').onclick=prevItem;
 document.getElementById('btn-next').onclick=nextItem;
-document.getElementById('btn-exit').onclick=()=>{clearT();wf.src='';if(document.fullscreenElement)document.exitFullscreen();showSetup();};
+document.getElementById('btn-exit').onclick=()=>{clearT();closePopup();if(document.fullscreenElement)document.exitFullscreen();showSetup();};
 document.getElementById('btn-fullscreen').onclick=toggleFS;
 document.getElementById('btn-play-pause').onclick=()=>{playing=!playing;document.getElementById('btn-play-pause').textContent=playing?'⏸':'▶';if(playing)renderItem(ci);else{clearT();pb.style.transition='none';}};
 function toggleFS(){if(!document.fullscreenElement){ks.requestFullscreen();document.getElementById('btn-fullscreen').textContent='⊡';}else{document.exitFullscreen();document.getElementById('btn-fullscreen').textContent='⛶';}}
